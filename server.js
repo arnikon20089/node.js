@@ -1,20 +1,43 @@
 const http = require('http');
+const url = require('url');
 
-const server = http.createServer((request, response) => {
-  response.setHeader('Content-Type', 'text/html; charset=utf-8');
+const server = http.createServer((req, res) => {
+  const parsedUrl = url.parse(req.url, true);
   
-  if (request.url === '/') {
-    response.write('<h1>Привет, Октагон!</h1>');
+  res.setHeader('Content-Type', 'application/json');
+  
+  if (parsedUrl.pathname === '/static') {
+    res.end(JSON.stringify({
+      header: "Hello",
+      body: "Octagon NodeJS Test"
+    }));
+    
+  } else if (parsedUrl.pathname === '/dynamic') {
+    const { a, b, c } = parsedUrl.query;
+    
+    if (!a || !b || !c || isNaN(a) || isNaN(b) || isNaN(c)) {
+      res.end(JSON.stringify({
+        header: "Error"
+      }));
+      return;
+    }
+    
+    const result = (parseFloat(a) * parseFloat(b) * parseFloat(c)) / 3;
+    
+    res.end(JSON.stringify({
+      header: "Calculated",
+      body: result.toString()
+    }));
+    
   } else {
-    response.statusCode = 404;
-    response.write('<h1>Страница не найдена</h1>');
+    res.statusCode = 404;
+    res.end(JSON.stringify({
+      error: "Not Found"
+    }));
   }
-
-  response.end();
 });
 
 const PORT = 3000;
-
 server.listen(PORT, () => {
-  console.log(`Сервер запущен на http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
