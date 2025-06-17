@@ -11,5 +11,17 @@
   "license": "ISC",
   "devDependencies": {
     "nodemon": "^3.0.2"
-  }
+  },
+  "dependencies": {
+    "mysql2": "^3.14.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arnikon20089/node.js.git"
+  },
+  "keywords": [],
+  "bugs": {
+    "url": "https://github.com/arnikon20089/node.js/issues"
+  },
+  "homepage": "https://github.com/arnikon20089/node.js#readme"
 }
