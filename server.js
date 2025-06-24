@@ -1,8 +1,8 @@
-const http = require('http');
-const url = require('url');
+const express = require('express');
 const mysql = require('mysql2');
+const app = express();
 
-// Конфигурация базы данных
+// Конфигурация базы данных и подключение
 const dbConfig = {
   host: 'localhost',
   user: 'root',
@@ -10,193 +10,109 @@ const dbConfig = {
   database: 'ChatBotTests'
 };
 
-// Подключение к MySQL
 const connection = mysql.createConnection(dbConfig);
 
-connection.connect(err => {
-  if (err) {
-    console.error('Ошибка подключения к MySQL:', err);
-    process.exit(1);
-  }
-  console.log('Успешно подключено к MySQL');
-});
+// Middleware для обработки JSON
+app.use(express.json());
 
-// Функция для чтения тела запроса
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let body = '';
-    req.on('data', chunk => body += chunk.toString());
-    req.on('end', () => resolve(body));
-    req.on('error', reject);
-  });
-}
-
-// Обработчики маршрутов
-async function getAllItems(req, res) {
-  connection.query('SELECT * FROM Items', (err, results) => {
-    if (err) {
-      console.error('Ошибка MySQL:', err);
-      sendResponse(res, 500, { error: 'Ошибка сервера' });
-      return;
-    }
-    sendResponse(res, 200, results);
-  });
-}
-
-async function addItem(req, res) {
-  try {
-    const body = await readBody(req);
-    const { name, desc } = JSON.parse(body);
-    
-    if (!name || !desc) {
-      sendResponse(res, 400, { error: 'Необходимы параметры name и desc' });
-      return;
-    }
-    
-    connection.query(
-      'INSERT INTO Items (name, `desc`) VALUES (?, ?)',
-      [name, desc],
-      (err, results) => {
-        if (err) {
-          console.error('Ошибка MySQL:', err);
-          sendResponse(res, 500, { error: 'Ошибка сервера' });
-          return;
-        }
-        sendResponse(res, 201, {
-          id: results.insertId,
-          name,
-          desc
-        });
-      }
-    );
-  } catch (err) {
-    sendResponse(res, 400, { error: 'Неверный формат данных' });
-  }
-}
-
-async function deleteItem(req, res) {
-  try {
-    const body = await readBody(req);
-    const { id } = JSON.parse(body);
-    
-    if (!id || isNaN(id)) {
-      sendResponse(res, 400, { error: 'Необходим корректный параметр id' });
-      return;
-    }
-    
-    connection.query(
-      'DELETE FROM Items WHERE id = ?',
-      [id],
-      (err, results) => {
-        if (err) {
-          console.error('Ошибка MySQL:', err);
-          sendResponse(res, 500, { error: 'Ошибка сервера' });
-          return;
-        }
-        sendResponse(res, 200, {
-          success: results.affectedRows > 0
-        });
-      }
-    );
-  } catch (err) {
-    sendResponse(res, 400, { error: 'Неверный формат данных' });
-  }
-}
-
-async function updateItem(req, res) {
-  try {
-    const body = await readBody(req);
-    const { id, name, desc } = JSON.parse(body);
-    
-    if (!id || isNaN(id) || !name || !desc) {
-      sendResponse(res, 400, { error: 'Необходимы параметры id, name и desc' });
-      return;
-    }
-    
-    connection.query(
-      'UPDATE Items SET name = ?, `desc` = ? WHERE id = ?',
-      [name, desc, id],
-      (err, results) => {
-        if (err) {
-          console.error('Ошибка MySQL:', err);
-          sendResponse(res, 500, { error: 'Ошибка сервера' });
-          return;
-        }
-        
-        if (results.affectedRows === 0) {
-          sendResponse(res, 404, { error: 'Запись не найдена' });
-          return;
-        }
-        
-        connection.query(
-          'SELECT * FROM Items WHERE id = ?',
-          [id],
-          (err, updatedItem) => {
-            if (err) {
-              console.error('Ошибка MySQL:', err);
-              sendResponse(res, 500, { error: 'Ошибка сервера' });
-              return;
-            }
-            sendResponse(res, 200, updatedItem[0] || {});
-          }
-        );
-      }
-    );
-  } catch (err) {
-    sendResponse(res, 400, { error: 'Неверный формат данных' });
-  }
-}
-
-function sendResponse(res, statusCode, data) {
-  res.statusCode = statusCode;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify(data));
-}
-
-const server = http.createServer(async (req, res) => {
-  const parsedUrl = url.parse(req.url, true);
-  const { pathname } = parsedUrl;
-
-  // Настройка CORS
+// Настройка CORS
+app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+});
 
-  // Обработка предварительного OPTIONS запроса
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 204;
-    res.end();
-    return;
-  }
-
-  // Маршрутизация
+// Обработчики маршрутов
+app.get('/getAllItems', async (req, res) => {
   try {
-    if (pathname === '/getAllItems' && req.method === 'GET') {
-      await getAllItems(req, res);
-    } 
-    else if (pathname === '/addItem' && req.method === 'POST') {
-      await addItem(req, res);
-    } 
-    else if (pathname === '/deleteItem' && req.method === 'POST') {
-      await deleteItem(req, res);
-    } 
-    else if (pathname === '/updateItem' && req.method === 'POST') {
-      await updateItem(req, res);
-    }
-    else {
-      sendResponse(res, 404, { error: 'Маршрут не найден' });
-    }
+    const [results] = await connection.promise().query('SELECT * FROM Items');
+    res.status(200).json(results);
   } catch (err) {
-    console.error('Ошибка обработки запроса:', err);
-    sendResponse(res, 500, { error: 'Внутренняя ошибка сервера' });
+    console.error('Ошибка MySQL:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 
+app.post('/addItem', async (req, res) => {
+  try {
+    const { name, desc } = req.body;
+    
+    if (!name || !desc) {
+      return res.status(400).json({ error: 'Необходимы параметры name и desc' });
+    }
+    
+    const [result] = await connection.promise().query(
+      'INSERT INTO Items (name, `desc`) VALUES (?, ?)',
+      [name, desc]
+    );
+    
+    res.status(201).json({
+      id: result.insertId,
+      name,
+      desc
+    });
+  } catch (err) {
+    res.status(400).json({ error: 'Неверный формат данных' });
+  }
+});
+
+app.post('/deleteItem', async (req, res) => {
+  try {
+    const { id } = req.body;
+    
+    if (!id || isNaN(id)) {
+      return res.status(400).json({ error: 'Необходим корректный параметр id' });
+    }
+    
+    const [result] = await connection.promise().query(
+      'DELETE FROM Items WHERE id = ?',
+      [id]
+    );
+    
+    res.status(200).json({
+      success: result.affectedRows > 0
+    });
+  } catch (err) {
+    res.status(400).json({ error: 'Неверный формат данных' });
+  }
+});
+
+app.post('/updateItem', async (req, res) => {
+  try {
+    const { id, name, desc } = req.body;
+    
+    if (!id || isNaN(id) || !name || !desc) {
+      return res.status(400).json({ error: 'Необходимы параметры id, name и desc' });
+    }
+    
+    const [result] = await connection.promise().query(
+      'UPDATE Items SET name = ?, `desc` = ? WHERE id = ?',
+      [name, desc, id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Запись не найдена' });
+    }
+    
+    const [[updatedItem]] = await connection.promise().query(
+      'SELECT * FROM Items WHERE id = ?',
+      [id]
+    );
+    
+    res.status(200).json(updatedItem || {});
+  } catch (err) {
+    res.status(400).json({ error: 'Неверный формат данных' });
+  }
+});
+
+// Запуск сервера
 const PORT = 3000;
-server.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Сервер запущен на порту ${PORT}`);
 });
 
+// Обработка завершения работы
 process.on('SIGINT', () => {
   connection.end();
   process.exit();
